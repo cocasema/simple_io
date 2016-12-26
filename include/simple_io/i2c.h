@@ -22,6 +22,8 @@
  * SOFTWARE.
  ******************************************************************************/
 
+#pragma once
+
 #include <ros/ros.h>
 
 #include <errno.h>
@@ -66,36 +68,67 @@ public:
     return true;
   }
 
-  bool write_byte(uint8_t reg, uint8_t data)
-  {
-    uint8_t buf[2];
-    buf[0] = reg;
-    buf[1] = data;
 
-    if (write(file_, buf, sizeof(buf)) != sizeof(buf)) {
-      ROS_ERROR("I2C: Failed to write byte to register 0x%02x: %i-%s",
+  bool write(uint8_t reg, uint8_t const* data, size_t size)
+  {
+    uint8_t buf[1 + size];
+    buf[0] = reg;
+    memcpy(buf + 1, data, size);
+
+    if (::write(file_, buf, sizeof(buf)) != (ssize_t)sizeof(buf)) {
+      ROS_ERROR("I2C: Failed to write data to register 0x%02x: %i-%s",
                 reg, errno, strerror(errno));
       return false;
     }
 
+    ROS_DEBUG("I2C: Successfully wrote %zu byte(s) to reg=0x%02x", size, reg);
     return true;
   }
 
-  bool read_bytes(uint8_t reg, uint8_t* data, int len)
+  template <typename T>
+  bool write(uint8_t reg, T const& data)
   {
-    if (write(file_, &reg, sizeof(reg)) != sizeof(reg)) {
-      ROS_ERROR("I2C: Failed to read bytes - writing reg=0x%02x: %i-%s",
+    return write(reg, reinterpret_cast<uint8_t const*>(&data), sizeof(T));
+  }
+
+  template <typename T, size_t N>
+  bool write(uint8_t reg, T (&data)[N])
+  {
+    return write(reg, reinterpret_cast<uint8_t const*>(&data), sizeof(T) * N);
+  }
+
+  bool write_uint8 (uint8_t reg, uint8_t data)  { return write(reg, data); }
+  bool write_uint16(uint8_t reg, uint16_t data) { return write(reg, data); }
+
+
+  bool read(uint8_t reg, uint8_t* data, size_t size)
+  {
+    if (::write(file_, &reg, sizeof(reg)) != sizeof(reg)) {
+      ROS_ERROR("I2C: Failed to read byte(s) - writing reg=0x%02x: %i-%s",
                 reg, errno, strerror(errno));
       return false;
     }
 
-    if (read(file_, data, len) != len) {
-      ROS_ERROR("I2C: Failed to read bytes - reading reg=0x%02x: %i-%s",
+    if (::read(file_, data, (ssize_t)size) != (ssize_t)size) {
+      ROS_ERROR("I2C: Failed to read byte(s) - reading reg=0x%02x: %i-%s",
                 reg, errno, strerror(errno));
       return false;
     }
 
+    ROS_DEBUG("I2C: Successfully read %zu byte(s) from reg=0x%02x", size, reg);
     return true;
+  }
+
+  template <typename T>
+  bool read(uint8_t reg, T* data)
+  {
+    return read(reg, reinterpret_cast<uint8_t*>(data), sizeof(T));
+  }
+
+  template <typename T, size_t N>
+  bool read(uint8_t reg, T (*data)[N])
+  {
+    return read(reg, reinterpret_cast<uint8_t*>(data), sizeof(T) * N);
   }
 
 private:
